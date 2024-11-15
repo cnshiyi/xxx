@@ -3,12 +3,14 @@ import sqlite3
 import logging
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from eth_keys import keys
 import hashlib
 import base58
 import requests
 import config  # 导入配置文件
+from apscheduler.schedulers.background import BackgroundScheduler
+import random
 
 # 从 config.py 中读取配置
 TELEGRAM_TOKEN = config.TELEGRAM_TOKEN
@@ -19,9 +21,23 @@ TRON_API_KEY = config.TRON_API_KEY
 # 配置日志，按天生成新的日志文件，并使用UTF-8编码
 def setup_logging():
     log_filename = f'wallet_generator_{datetime.now().strftime("%Y-%m-%d")}.log'
-    logging.basicConfig(filename=log_filename, level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - %(message)s',
-                        encoding="utf-8")
+
+    # 创建日志处理器并设置编码
+    file_handler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+
+    # 设置根日志记录器
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logger.addHandler(file_handler)
+
+    # 如果需要，你可以添加控制台输出
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    logging.info("日志已配置，程序启动")
 
 
 # 发送 Telegram 消息，加入异常处理
@@ -41,11 +57,58 @@ def send_telegram_message(message):
         logging.error(f"发送 Telegram 消息时出错: {e}")
 
 
-# 发送余额不为零的通知
-def send_non_zero_balance_notification(wallet_address, trx_balance, usdt_balance):
-    message = f"钱包地址: {wallet_address}\nTRX 余额: {trx_balance}\nUSDT 余额: {usdt_balance}\n该钱包余额不为零，需注意！"
-    send_telegram_message(message)
-    logging.info(f"已发送非零余额通知: {message}")
+# 发送文件到 Telegram，并加入失败重试机制
+def send_log_file(log_filename):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        logging.warning("Telegram 配置未设置，跳过发送消息")
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+
+    # 循环尝试发送文件，直到成功为止
+    while True:
+        try:
+            with open(log_filename, 'rb') as log_file:
+                files = {'document': log_file}
+                data = {'chat_id': TELEGRAM_CHAT_ID}
+
+                # 尝试发送文件
+                response = requests.post(url, data=data, files=files)
+
+                # 如果发送成功，退出循环
+                if response.status_code == 200:
+                    logging.info(f"已成功发送日志文件: {log_filename}")
+                    return
+                else:
+                    raise Exception(f"Telegram 文件发送失败: {response.text}")
+
+        except Exception as e:
+            # 如果发送失败，记录错误并等待随机时间后重试
+            logging.error(f"发送日志文件时出错: {e}")
+            wait_time = random.randint(10, 60)  # 随机等待 10 到 60 秒
+            logging.info(f"等待 {wait_time} 秒后重试...")
+            time.sleep(wait_time)
+
+
+# 删除文件
+def delete_log_file(log_filename):
+    try:
+        os.remove(log_filename)
+        logging.info(f"已删除日志文件: {log_filename}")
+    except Exception as e:
+        logging.error(f"删除日志文件时出错: {e}")
+
+
+# 每天12点随机时间发送前一天的日志
+def send_yesterday_log():
+    yesterday = datetime.now() - timedelta(days=1)
+    log_filename = f'wallet_generator_{yesterday.strftime("%Y-%m-%d")}.log'
+
+    if os.path.exists(log_filename):
+        send_log_file(log_filename)
+        delete_log_file(log_filename)
+    else:
+        logging.warning(f"日志文件 {log_filename} 不存在，跳过发送。")
 
 
 # 创建数据库连接和表
@@ -194,10 +257,19 @@ def main():
     # 发送 Telegram 启动测试消息
     send_telegram_message("程序已启动，开始生成钱包。")
 
+    # 初始化调度器
+    scheduler = BackgroundScheduler()
+
+    # 每天12点随机时间执行发送日志任务
+    scheduler.add_job(send_yesterday_log, 'cron', hour=12, minute=random.randint(0, 59))
+
+    # 启动调度器
+    scheduler.start()
+
     # 启动多个线程进行钱包地址生成，并确保程序循环运行
     while True:
         threads = []
-        for _ in range(2):  # 启动 3 个线程，线程数可以根据需要调整
+        for _ in range(2):  # 启动 2 个线程，线程数可以根据需要调整
             thread = threading.Thread(target=generate_wallet_thread)
             thread.start()
             threads.append(thread)
@@ -206,9 +278,7 @@ def main():
         for thread in threads:
             thread.join()
 
-        # 每轮生成完后延时一定时间，防止请求过于频繁
-    #    logging.info("本轮生成完成，等待 60 秒后开始下一轮生成。")
-      #  time.sleep(60)  # 延时 60 秒后继续
+   #     time.sleep(60)  # 每60秒执行一次，避免过于频繁的请求
 
 
 if __name__ == "__main__":
