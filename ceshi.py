@@ -153,55 +153,7 @@ def save_counter(counter):
 INDEX_TO_INCREMENT = None
 
 
-# 生成唯一的私钥和地址（随机选择一位递增，且该位固定）
-def generate_unique_private_key_and_address():
-    global counter
-    # 使用锁保护对全局计数器的访问和递增
-    with counter_lock:
-        # 将计数器转换为64位十六进制表示的字符串
-        counter_hex = f"{counter:064x}"
-        # 将十六进制字符串转换为列表，便于修改特定位
-        counter_list = list(counter_hex)
-
-        # 根据 INDEX_TO_INCREMENT 的位置决定递增方向
-        if INDEX_TO_INCREMENT >= 32:
-            # INDEX_TO_INCREMENT 大于等于 32 时，向前递增
-            for i in range(INDEX_TO_INCREMENT, -1, -1):
-                current_value = int(counter_list[i], 16)
-                new_value = (current_value + 1) % 16
-                counter_list[i] = hex(new_value)[2:]
-                if new_value != 0:
-                    break
-        else:
-            # INDEX_TO_INCREMENT 小于 32 时，向后递增
-            for i in range(INDEX_TO_INCREMENT, 64):
-                current_value = int(counter_list[i], 16)
-                new_value = (current_value + 1) % 16
-                counter_list[i] = hex(new_value)[2:]
-                if new_value != 0:
-                    break
-
-        # 生成新的计数器十六进制字符串
-        new_counter_hex = ''.join(counter_list)
-
-        # 打印调试信息，记录计数器状态
-     #   logging.info(f"计数器状态: {counter_hex} -> {new_counter_hex}")
-
-        # 更新全局计数器的值为新的十六进制字符串转换回的整数
-        counter = int(new_counter_hex, 16)
-
-    # 将十六进制字符串转换为字节
-    private_key_bytes = bytes.fromhex(new_counter_hex)
-
-    # 生成钱包地址
-    wallet_address = private_key_to_tron_address(private_key_bytes)
-
-    # 打印调试信息
- #   logging.info(f"私钥递增位置: {INDEX_TO_INCREMENT}, 原始计数器: {counter_hex}, 新计数器: {new_counter_hex}")
-
-    return new_counter_hex, wallet_address
-
-# # 测试代码，从0开始（递增最后一位）
+# # 生成唯一的私钥和地址（随机选择一位递增，且该位固定）
 # def generate_unique_private_key_and_address():
 #     global counter
 #     # 使用锁保护对全局计数器的访问和递增
@@ -211,19 +163,32 @@ def generate_unique_private_key_and_address():
 #         # 将十六进制字符串转换为列表，便于修改特定位
 #         counter_list = list(counter_hex)
 #
-#         # 递增最后一位
-#         for i in range(63, -1, -1):
-#             current_value = int(counter_list[i], 16)
-#             new_value = (current_value + 1) % 16
-#             counter_list[i] = hex(new_value)[2:]
-#             if new_value != 0:
-#                 break
+#         # 根据 INDEX_TO_INCREMENT 的位置决定递增方向
+#         if INDEX_TO_INCREMENT >= 32:
+#             # INDEX_TO_INCREMENT 大于等于 32 时，向前递增
+#             for i in range(INDEX_TO_INCREMENT, -1, -1):
+#                 current_value = int(counter_list[i], 16)
+#                 new_value = (current_value + 1) % 16
+#                 counter_list[i] = hex(new_value)[2:]
+#                 if new_value != 0:
+#                     break
+#         else:
+#             # INDEX_TO_INCREMENT 小于 32 时，向后递增
+#             for i in range(INDEX_TO_INCREMENT, 64):
+#                 current_value = int(counter_list[i], 16)
+#                 new_value = (current_value + 1) % 16
+#                 counter_list[i] = hex(new_value)[2:]
+#                 if new_value != 0:
+#                     break
 #
 #         # 生成新的计数器十六进制字符串
 #         new_counter_hex = ''.join(counter_list)
 #
+#         # 打印调试信息，记录计数器状态
+#      #   logging.info(f"计数器状态: {counter_hex} -> {new_counter_hex}")
+#
 #         # 更新全局计数器的值为新的十六进制字符串转换回的整数
-#         counter += 1
+#         counter = int(new_counter_hex, 16)
 #
 #     # 将十六进制字符串转换为字节
 #     private_key_bytes = bytes.fromhex(new_counter_hex)
@@ -231,7 +196,42 @@ def generate_unique_private_key_and_address():
 #     # 生成钱包地址
 #     wallet_address = private_key_to_tron_address(private_key_bytes)
 #
+#     # 打印调试信息
+#  #   logging.info(f"私钥递增位置: {INDEX_TO_INCREMENT}, 原始计数器: {counter_hex}, 新计数器: {new_counter_hex}")
+#
 #     return new_counter_hex, wallet_address
+
+# 测试代码，从0开始（递增最后一位）
+def generate_unique_private_key_and_address():
+    global counter
+    # 使用锁保护对全局计数器的访问和递增
+    with counter_lock:
+        # 将计数器转换为64位十六进制表示的字符串
+        counter_hex = f"{counter:064x}"
+        # 将十六进制字符串转换为列表，便于修改特定位
+        counter_list = list(counter_hex)
+
+        # 递增最后一位
+        for i in range(63, -1, -1):
+            current_value = int(counter_list[i], 16)
+            new_value = (current_value + 1) % 16
+            counter_list[i] = hex(new_value)[2:]
+            if new_value != 0:
+                break
+
+        # 生成新的计数器十六进制字符串
+        new_counter_hex = ''.join(counter_list)
+
+        # 更新全局计数器的值为新的十六进制字符串转换回的整数
+        counter += 1
+
+    # 将十六进制字符串转换为字节
+    private_key_bytes = bytes.fromhex(new_counter_hex)
+
+    # 生成钱包地址
+    wallet_address = private_key_to_tron_address(private_key_bytes)
+
+    return new_counter_hex, wallet_address
 
 # 将私钥转换为 Tron 地址
 def private_key_to_tron_address(private_key_bytes):
@@ -316,7 +316,7 @@ def generate_wallet_thread(thread_id, counter_lock, wallet_cache, cache_lock):
             # 使用锁保护缓存池的修改
             with cache_lock:
                 wallet_cache.append(wallet_data)
-                if len(wallet_cache) >= 1000:
+                if len(wallet_cache) >= 100:
                     save_wallets_to_database(wallet_cache)
                     # 保存余额非零的钱包到特定表
                     non_zero_wallets = [wallet for wallet in wallet_cache if wallet[2] > 0 or wallet[3] > 0]
@@ -335,7 +335,7 @@ def main():
     setup_logging()  # 确保日志首先配置
     global INDEX_TO_INCREMENT
     # 随机代码
-    INDEX_TO_INCREMENT = random.randint(0, 63)
+ #   INDEX_TO_INCREMENT = random.randint(0, 63)
     logging.info(f"随机选择的递增位置为: {INDEX_TO_INCREMENT}")
 
     global counter
@@ -345,8 +345,8 @@ def main():
     send_telegram_message(f"程序已启动，开始生成钱包。\n当前 IP: {current_ip}")
 
     # 加载计数器状态
-  #   counter = 0   测试代码，从0开始
-    counter = load_counter()
+    counter = 0   # 测试代码，从0开始
+  #  counter = load_counter()
 
     # 使用锁保护不重复的连续计数器
     global counter_lock
